@@ -1,0 +1,94 @@
+---
+title: "stm.R"
+author: "D. Danilenko"
+date: "2023-08-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("stm")
+library("quanteda")
+library("stminsights")
+library("tidyverse")
+library("readxl")
+library("dplyr")
+library("ggplot2")
+library("tidytext")
+library("gutenbergr")
+library("reshape2")
+library("gridExtra")
+library("forestplot")
+library("wesanderson")
+library("tidyr")
+```
+
+```{r}
+data <- read.csv('data/df_full.csv', header = TRUE) 
+data <- data %>%
+  select(-X)
+data$text <- "text"
+```
+
+```{r}
+### DATA PROCESSING ###
+# building a corpus using quanteda
+# combine title, abstract and keywords in a column called text
+data$text <- paste(data$title, data$abstract, data$keywords)
+
+# get rid of the copyright information in our corpus
+data <- data %>% separate(text, c("text","copyright"), sep = "\\(c\\)\\s*\\d+", extra="merge", remove = TRUE) #removes (c) followed by numbers - this covers most copyright messages
+data$text <- gsub("all rights reserved"," ",as.character(data$text))
+
+# create the actual CORPUS 
+corp <- corpus(data, text_field = "text")
+summary(corp, 3)
+
+# the function automatically assumes all other columns contain document variables
+head(docvars(corp)) 
+
+# create TOKENS from this - this basically just means cutting up the text into individual words
+toks <- tokens(corp)
+#the below is a fairly standard list for pre-processing
+toks <- tokens(corp, remove_punct = TRUE, remove_symbols = TRUE) %>% #create tokens w/o punctuation or symbols
+  tokens_tolower() %>% #lowercase -- note the pipe means this function doesn't need any input
+  tokens_remove(pattern = stopwords("en"), #remove stopwords
+                min_nchar = 2) %>% #remove short words. AMR is three letters, so best keep it to 2
+  tokens_wordstem(language = "en") #Using snowball stemmer
+
+# create two dfms: one with unigrams and one with bi-grams
+dfm_single = dfm(toks)%>%
+  dfm_trim(min_termfreq = 100, termfreq_type = "count", max_docfreq=0.95, docfreq_type = "prop")
+
+toks_bigram <- tokens_ngrams(toks, n = 2, skip = 1:2)
+dfm_bigram <- dfm(toks_bigram) %>%
+  dfm_trim(min_termfreq = 100, termfreq_type = "count", max_docfreq=0.95, docfreq_type = "prop")
+
+# combine
+dfm = cbind(dfm_bigram, dfm_single)
+
+# show most-frequent tokens:
+topfeatures(dfm, 15) # should include some bi-grams now
+```
+
+```{r}
+storage <- manyTopics(dfm, seed=1608,
+                      K=c(75,100,125),
+                      runs = 12,
+                      prevalence =~first_author_female + last_author_female + majority_female_binary + 
+                        s(year) + subfield + X1_gii_quartile + X2_gii_quartile + impact,
+                      data = docvars(dfm),
+                      max.em.its = 100,
+                      control = list(alpha = 0.5, #Lower than default of 50/k to allow documents to have more topics -> makes small topics more likely to show up
+                                     eta = 0.1))  #Higher than default of 0.01 to create topics composed of more words -> more clarity for complex topics
+
+# explore 
+```
+
+
+
+
+
