@@ -75,6 +75,7 @@ topfeatures(dfm, 15) # should include some bi-grams now
 ```
 
 ```{r}
+### TOPIC MODELLING ###
 storage <- manyTopics(dfm, seed=1608,
                       K=c(75,100,125),
                       runs = 12,
@@ -85,8 +86,43 @@ storage <- manyTopics(dfm, seed=1608,
                       control = list(alpha = 0.5, #Lower than default of 50/k to allow documents to have more topics -> makes small topics more likely to show up
                                      eta = 0.1))  #Higher than default of 0.01 to create topics composed of more words -> more clarity for complex topics
 
-# explore 
 ```
+
+```{r}
+# get the models and save them
+model1 <- storage$out[[1]]
+model2 <- storage$out[[2]]
+model3 <- storage$out[[3]]
+
+saveRDS(model3, file = "170823_3.Rds")
+
+# explore the outputs
+# see the topic frequency with the top n keywords:
+plot.STM(model1, type="summary", n = 5, xlim=c(0,.12))
+plot.STM(model2, type="summary", n = 5, xlim=c(0,.12))
+plot.STM(model3, type="summary", n = 5, xlim=c(0,.12))
+
+# print out topics with keywords
+topics <- data.frame(labelTopics(model1, c(1:model1$settings$dim$K), n=10)$prob)
+topics$vocab <- "text"
+topics$vocab <- paste(topics$X1,topics$X2,topics$X3,topics$X4,topics$X5,topics$X6,topics$X7, topics$X8, topics$X9, topics$X10)
+topics = subset(topics, select = -c(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10))
+
+topics2 <- data.frame(labelTopics(model2, c(1:model2$settings$dim$K), n=10)$prob)
+topics2$vocab <- "text"
+topics2$vocab <- paste(topics2$X1,topics2$X2,topics2$X3,topics2$X4,topics2$X5,topics2$X6,topics2$X7, topics2$X8, topics2$X9, topics2$X10)
+topics2 = subset(topics2, select = -c(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10))
+
+topics3 <- data.frame(labelTopics(model3, c(1:model3$settings$dim$K), n=10)$prob)
+topics3$vocab <- "text"
+topics3$vocab <- paste(topics3$X1,topics3$X2,topics3$X3,topics3$X4,topics3$X5,topics3$X6,topics3$X7, topics3$X8, topics3$X9, topics3$X10)
+topics3 = subset(topics3, select = -c(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10))
+
+write.csv(topics,"topics1.csv")
+write.csv(topics2,"topics2.csv")
+write.csv(topics3,"topics3.csv")
+```
+
 
 
 
