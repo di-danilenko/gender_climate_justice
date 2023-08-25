@@ -123,8 +123,128 @@ write.csv(topics2,"topics2.csv")
 write.csv(topics3,"topics3.csv")
 ```
 
+```{r}
+set.seed(210823)
+K <- c(110,120,130,140,150)
+kresult <- searchK(documents = dfm, K = K,
+                   N = floor(0.1 * nrow(docvars(dfm))),
+                   prevalence =~first_author_female + last_author_female + majority_female_binary + 
+                     s(year) + subfield + X1_gii_quartile + X2_gii_quartile + impact, data = docvars(dfm),
+                   max.em.its = 20)
+plot(kresult)
+```
+
+```{r}
+# find a good model for K = 120
+# fit another one for the same K with previously used settings - explore them quantitatively, choose the best one and label
+
+mod.out <- selectModel(dfm, K=120, prevalence =~first_author_female + last_author_female + majority_female_binary + 
+                     s(year) + subfield + X1_gii_quartile + X2_gii_quartile + impact, data = docvars(dfm), runs = 5, max.em.its = 20)
+plotModels(mod.out)
+
+model120 <- mod.out$runout[[1]]
+
+saveRDS(model120, file = "240823_120.Rds")
+
+plot.STM(model120, type="summary", n = 5, xlim=c(0,.12))
+
+# get highest frequency words
+
+topics120 <- data.frame(labelTopics(model120, c(1:model120$settings$dim$K), n=10)$prob)
+topics120$vocab <- "text"
+topics120$vocab <- paste(topics120$X1,topics120$X2,topics120$X3,topics120$X4,topics120$X5,topics120$X6,topics120$X7, topics120$X8, topics120$X9, topics120$X10)
+topics120 = subset(topics120, select = -c(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10))
+
+write.csv(topics120,"topics120.csv")
+# get the most representative documents for each topic
+
+```
+
+```{r}
+### RUN ME ###
+
+model120_1 <- stm(dfm, seed=1608,
+                      K=120,
+                      prevalence =~first_author_female + last_author_female + majority_female_binary + 
+                        s(year) + subfield + X1_gii_quartile + X2_gii_quartile + impact,
+                      data = docvars(dfm),
+                      max.em.its = 75,
+                      control = list(alpha = 0.5, #Lower than default of 50/k to allow documents to have more topics -> makes small topics more likely to show up
+                                     eta = 0.1))  #Higher than default of 0.01 to create topics composed of more words -> more clarity for complex topics
+
+saveRDS(model120_1, file = "240823_120_1.Rds")
+
+plot.STM(model120_1, type="summary", n = 5, xlim=c(0,.12))
+
+# get highest frequency words
+
+topics120_1 <- data.frame(labelTopics(model120_1, c(1:model120_1$settings$dim$K), n=10)$prob)
+topics120_1$vocab <- "text"
+topics120_1$vocab <- paste(topics120_1$X1,topics120_1$X2,topics120_1$X3,topics120_1$X4,topics120_1$X5,topics120_1$X6,topics120_1$X7, topics120_1$X8, topics120_1$X9, topics120_1$X10)
+topics120_1 = subset(topics120_1, select = -c(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10))
+
+write.csv(topics120_1,"topics120_1.csv")
+```
 
 
+```{r}
+### TOPIC MODEL EXPLORATION ###
 
+thoughts120 <- findThoughts(model120, texts = data$text, n = 5, meta = docvars(dfm))
+thoughts <- data.frame(thoughts120$docs)
+write.csv(thoughts,"thoughts120.csv")
+
+
+# try to launch the website for topic exploration too
+
+# do i need to split up these estimations into separate equations ??? do they effect each other too much otherwise?
+
+prep <- estimateEffect(~first_author_female + last_author_female + majority_female_binary + 
+                     s(year) + subfield + X1_gii_quartile + X2_gii_quartile + impact + 
+                       subfield*first_author_female + subfield*last_author_female + subfield*majority_female_binary +
+                       impact*first_author_female + impact*last_author_female + impact*majority_female_binary +
+                       X1_gii_quartile*first_author_female + X2_gii_quartile*last_author_female +
+                       X2_gii_quartile*majority_female_binary, model120,
+                       metadata = docvars(dfm))
+
+prep1 <-  estimateEffect(~first_author_female +
+                           s(year) + subfield + X1_gii_quartile + impact + 
+                           subfield*first_author_female +
+                           impact*first_author_female +
+                           X1_gii_quartile*first_author_female, model120,
+                         metadata = docvars(dfm))
+
+prep2 <-  estimateEffect(~last_author_female +
+                           s(year) + subfield + X2_gii_quartile + impact + 
+                           subfield*last_author_female +
+                           impact*last_author_female +
+                           X2_gii_quartile*last_author_female, model120,
+                         metadata = docvars(dfm))
+
+prep3 <-  estimateEffect(~majority_female_binary +
+                           s(year) + subfield + X2_gii_quartile + impact + 
+                           subfield*majority_female_binary +
+                           impact*majority_female_binary +
+                           X2_gii_quartile*majority_female_binary, model120,
+                         metadata = docvars(dfm))
+
+#STM does  not store the values of those co-variates (i.e. the meta-data) with the model
+#so have to specify docvars as metadata but note THIS HAS TO BE THE EXACT SAME DFM YOU USED ABOVE!
+
+#For those who get a warning here that the Covariate matrix is singular
+#This usually means the default spline has too many degrees of freedom (default is 10)
+#You can try re-running with a lower spline but note this leads to smoothing!
+prep2 <- estimateEffect(~ highly.cited + s(Year, 7), model2,
+                       metadata = docvars(dfmYears))
+
+#If you want to try out the interactive shiny app of STMInsights, now's the time
+#You need to save your workspace, launch the app & load the workspace into the app
+#However, the app is picky about names and data types so we have to first convert
+out <- quanteda::convert(dfmYears, to = "stm",docvars=docvars(dfmYears))
+save.image("230123_Workshop3.RData") #This has to contain prep,
+#Uncomment & run to launch the app
+run_stminsights()
+
+```
 
 
