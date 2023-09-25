@@ -31,6 +31,16 @@ data <- read.csv('data/df_full.csv', header = TRUE)
 data <- data %>%
   select(-X)
 data$text <- "text"
+
+data <- data %>%
+  mutate(impact = if_else(is.na(impact) | impact == "None", "unknown", impact))
+data$subfield <- as.factor(data$subfield)
+data$first_author_female <- as.factor(data$first_author_female)
+data$last_author_female <- as.factor(data$last_author_female)
+data$majority_female_binary <- as.factor(data$majority_female_binary)
+data$impact <- as.factor(data$impact)
+data$X1_gii_quartile <- as.factor(data$X1_gii_quartile)
+data$X2_gii_quartile <- as.factor(data$X2_gii_quartile)
 ```
 
 ```{r}
@@ -156,12 +166,11 @@ topics120$vocab <- paste(topics120$X1,topics120$X2,topics120$X3,topics120$X4,top
 topics120 = subset(topics120, select = -c(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10))
 
 write.csv(topics120,"topics120.csv")
-# get the most representative documents for each topic
 
 ```
 
 ```{r}
-### RUN ME ###
+### STM (k = 120) ###
 
 model120_1 <- stm(dfm, seed=1608,
                       K=120,
@@ -189,62 +198,648 @@ write.csv(topics120_1,"topics120_1.csv")
 
 ```{r}
 ### TOPIC MODEL EXPLORATION ###
+model120_1 <- readRDS(file = "240823_120_1.Rds")
 
-thoughts120 <- findThoughts(model120, texts = data$text, n = 5, meta = docvars(dfm))
-thoughts <- data.frame(thoughts120$docs)
-write.csv(thoughts,"thoughts120.csv")
+# get the most representative documents for each topic
+
+thoughts120_1 <- findThoughts(model120_1, texts = data$text, n = 5, meta = docvars(dfm))
+thoughts <- data.frame(thoughts120_1$docs)
+write.csv(thoughts,"thoughts120_1.csv")
+
+# define CJ topics through manual exploration
+
+cj_topics <- c(12,21,25,37,44,50,56,80,83,91,101,118,119) 
+cj_topicnames <- c("Resilience","Food Security","Vulnerability","Adaptive Capacity","Governance","Local Knowledge","Island Territories","Climate Finance","Rural Households","Transformation Discourse","Community","Social Capital","Migration")
+```
 
 
-# try to launch the website for topic exploration too
+```{r}
+# estimate effects of meta data variables
 
-# do i need to split up these estimations into separate equations ??? do they effect each other too much otherwise?
-
-prep <- estimateEffect(~first_author_female + last_author_female + majority_female_binary + 
-                     s(year) + subfield + X1_gii_quartile + X2_gii_quartile + impact + 
-                       subfield*first_author_female + subfield*last_author_female + subfield*majority_female_binary +
-                       impact*first_author_female + impact*last_author_female + impact*majority_female_binary +
-                       X1_gii_quartile*first_author_female + X2_gii_quartile*last_author_female +
-                       X2_gii_quartile*majority_female_binary, model120,
-                       metadata = docvars(dfm))
-
-prep1 <-  estimateEffect(~first_author_female +
-                           s(year) + subfield + X1_gii_quartile + impact + 
-                           subfield*first_author_female +
+prep1 <-  estimateEffect(c(cj_topics) ~first_author_female +
+                           s(year) + 
+                           #subfield +
+                           X1_gii_quartile + impact + 
+                           #subfield*first_author_female +
                            impact*first_author_female +
-                           X1_gii_quartile*first_author_female, model120,
+                           X1_gii_quartile*first_author_female #, 
+                           ,model120_1,
                          metadata = docvars(dfm))
+summary(prep1)
 
-prep2 <-  estimateEffect(~last_author_female +
+# gender, spline of year, subfield, gii quartile and impact by themselves are not causing the warning
+# seems like the interaction with subfield is causing the warning
+# let's explore the results if we don't include this interaction term and compare to the results we got previously? 
+# if we include subfield but don't include the interaction - the results are much smaller
+# the results if we don't include subfield at all are also smaller
+
+# first_author_female is a binary (0/1) variable, with an additional 'unknown' factor
+# subfield has around 30 factor levels, with an additional 'unknown' factor
+# X1_gii_quartile/X2_gii_quartile and impact have 4 levels (1-4), with an additional 'unknown' factor 
+
+# we still get this warning "Covariate matrix is singular.Adding a small prior 1e-5 for numerical stability."
+
+prep2 <-  estimateEffect(c(cj_topics) ~last_author_female +
                            s(year) + subfield + X2_gii_quartile + impact + 
                            subfield*last_author_female +
                            impact*last_author_female +
-                           X2_gii_quartile*last_author_female, model120,
+                           X2_gii_quartile*last_author_female, model120_1,
                          metadata = docvars(dfm))
 
-prep3 <-  estimateEffect(~majority_female_binary +
+summary(prep2)
+
+prep3 <-  estimateEffect(c(cj_topics) ~majority_female_binary +
                            s(year) + subfield + X2_gii_quartile + impact + 
                            subfield*majority_female_binary +
                            impact*majority_female_binary +
-                           X2_gii_quartile*majority_female_binary, model120,
+                           X2_gii_quartile*majority_female_binary, model120_1,
                          metadata = docvars(dfm))
+summary(prep3)
 
-#STM does  not store the values of those co-variates (i.e. the meta-data) with the model
-#so have to specify docvars as metadata but note THIS HAS TO BE THE EXACT SAME DFM YOU USED ABOVE!
+### warning: covariate matrix is singular ### - need to address this!
 
-#For those who get a warning here that the Covariate matrix is singular
-#This usually means the default spline has too many degrees of freedom (default is 10)
-#You can try re-running with a lower spline but note this leads to smoothing!
-prep2 <- estimateEffect(~ highly.cited + s(Year, 7), model2,
-                       metadata = docvars(dfmYears))
+# Some common causes include a factor variable with an unobserved level,a spline with degrees of freedom that are too high, or a spline with a continuous variable where a gap in the support of the variable results in several empty basis functions. In these cases the function will still estimate by adding a small ridge penalty to the likelihood. However, we emphasize that while this will produce an estimate it is only identified by the penalty. In many cases this will be an indication that the user should specify a different model."""
 
-#If you want to try out the interactive shiny app of STMInsights, now's the time
-#You need to save your workspace, launch the app & load the workspace into the app
-#However, the app is picky about names and data types so we have to first convert
-out <- quanteda::convert(dfmYears, to = "stm",docvars=docvars(dfmYears))
-save.image("230123_Workshop3.RData") #This has to contain prep,
+# check factor variables - probably not this issue - is it because subfield has too many levels?
+# check spline variable - year - how ?
+```
+
+
+```{r}
+```
+
+
+```{r}
+# STM insights web version
+out <- quanteda::convert(dfm, to = "stm",docvars=docvars(dfm))
+save.image("280823_stm.RData") #This has to contain prep,
 #Uncomment & run to launch the app
 run_stminsights()
+```
+
+```{r}
+# extract mean topic prevalence
+
+proportions_table <- make.dt(model120_1)
+mean_proportions <- as.data.frame(summarize_all(proportions_table, mean))
+mean_proportions <- subset(mean_proportions, select = -docnum)
+new_col_names <- as.character(1:120)
+colnames(mean_proportions) <- new_col_names
+
+# make graphs with the relative change instead of absolute
+
+mean_proportions_f <- mean_proportions %>%
+  select(all_of(cj_topics))
+
+transformed_df <- mean_proportions_f %>%
+  pivot_longer(everything(), names_to = "topic", values_to = "mean_proportion")
+```
+
+```{r}
+### EXTRACT AND EXPLORE EFFECTS ### 
+### GENDER ###
+
+effects1 <- get_effects(estimates = prep1,
+                       variable = 'first_author_female',
+                       type = 'difference',
+                       cov_val1="1.0",cov_val2="0.0")
+
+effects2 <- get_effects(estimates = prep2,
+                        variable = 'last_author_female',
+                        type = 'difference',
+                        cov_val1="1.0",cov_val2="0.0")
+
+effects3 <- get_effects(estimates = prep3,
+                        variable = 'majority_female_binary',
+                        type = 'difference',
+                        cov_val1="1.0",cov_val2="0.0")
+```
+
+```{r}
+### TIDY UP THE RESULTS AND MAKE GRAPHS ###
+# forest plots gender x control x topic (topics ordered by prevalence)
+
+# filter to climate justice topics
+effects1_f <- effects1 %>%
+  #filter(topic %in% cj_topics) %>%
+  arrange(match(topic, cj_topics)) %>%
+  mutate(topicname = cj_topicnames)
+effects1_f <- merge(effects1_f, transformed_df, by = "topic")
+effects1_f$relativedifference <- effects1_f$difference/effects1_f$mean_proportion
+effects1_f$relativelower <- effects1_f$lower/effects1_f$mean_proportion
+effects1_f$relativeupper <- effects1_f$upper/effects1_f$mean_proportion
+
+effects2_f <- effects2 %>%
+  filter(topic %in% cj_topics) %>%
+  arrange(match(topic, cj_topics)) %>%
+  mutate(topicname = cj_topicnames)
+effects2_f <- merge(effects2_f, transformed_df, by = "topic")
+effects2_f$relativedifference <- effects2_f$difference/effects2_f$mean_proportion
+effects2_f$relativelower <- effects2_f$lower/effects2_f$mean_proportion
+effects2_f$relativeupper <- effects2_f$upper/effects2_f$mean_proportion
+
+effects3_f <- effects3 %>%
+  filter(topic %in% cj_topics) %>%
+  arrange(match(topic, cj_topics)) %>%
+  mutate(topicname = cj_topicnames)
+effects3_f <- merge(effects3_f, transformed_df, by = "topic")
+effects3_f$relativedifference <- effects3_f$difference/effects3_f$mean_proportion
+effects3_f$relativelower <- effects3_f$lower/effects3_f$mean_proportion
+effects3_f$relativeupper <- effects3_f$upper/effects3_f$mean_proportion
+
+# order by topic prevalence
+ordered_data1 <- data.frame(
+  topicname = factor(effects1_f$topicname, levels = rev(unique(effects1_f$topicname))),
+  difference = effects1_f$difference,
+  lower = effects1_f$lower,
+  upper = effects1_f$upper
+)
+
+ordered_data2 <- data.frame(
+  topicname = factor(effects2_f$topicname, levels = rev(unique(effects2_f$topicname))),
+  difference = effects2_f$difference,
+  lower = effects2_f$lower,
+  upper = effects2_f$upper
+)
+
+ordered_data3 <- data.frame(
+  topicname = factor(effects3_f$topicname, levels = rev(unique(effects3_f$topicname))),
+  difference = effects3_f$difference,
+  lower = effects3_f$lower,
+  upper = effects3_f$upper
+)
 
 ```
+
+
+```{r}
+### VISUALISATION ###
+### FOREST PLOTS ###
+# save graphs in width = 800
+
+# colour all of the variables similarly - if below 0 - colour green, if above 0 colour orange
+
+### FIRST AUTHOR DIFFERENCE ###
+subt <- c("← First author predicted male            First author predicted female →")
+fp1 <- ggplot(data=effects1_f, aes(x=topicname, y=relativedifference, ymin=relativelower, ymax=relativeupper)) +
+  labs(title = "Mean effect of first author gender",
+       subtitle = "Relative difference in topic proportion") +
+  geom_pointrange(colour = wes_palette("Darjeeling1")[5], shape=18, size = 1) + 
+  geom_hline(yintercept=0, lty=2, colour ='darkgrey') +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  scale_y_continuous(limits = c(-0.5, 1.25))  +
+  scale_x_discrete(expand = c(0.1, 0.1)) +
+  xlab('') + 
+  ylab(subt) +
+  theme(aspect.ratio=1,
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y = element_text(size = 10)) +
+  geom_label(aes(label = round(relativedifference, 3), y = relativedifference), 
+             size = 2.75, nudge_x = 0.5, 
+             label.padding = unit(0.2, "lines"),
+             label.r = unit(0,'lines'),
+             fill = "white")
+print(fp1)
+ggsave("graphs/1_gender_2109.png", fp1, width = 6.9, height = 6.9, dpi = 1000)
+```
+
+```{r}
+### LAST AUTHOR DIFFERENCE ###
+subt2 <- c("← Last author predicted male            Last author predicted female →")
+fp2 <- ggplot(data=effects2_f, aes(x=topicname, y=relativedifference, ymin=relativelower, ymax=relativeupper)) +
+  labs(title = "Mean effect of last author gender",
+       subtitle = "Relative difference in topic proportion") +
+  geom_pointrange(colour = wes_palette("Darjeeling1")[1], shape=18, size = 1) + 
+  geom_hline(yintercept=0, lty=2, colour ='darkgrey') +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  scale_y_continuous(limits = c(-0.5, 1.25))  +
+  scale_x_discrete(expand = c(0.1, 0.1)) +
+  xlab('') + 
+  ylab(subt2) +
+  theme(aspect.ratio=1,
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y = element_text(size = 10)) +
+  geom_label(aes(label = round(relativedifference, 3), y = relativedifference), 
+             size = 2.75, nudge_x = 0.5, 
+             label.padding = unit(0.2, "lines"),
+             label.r = unit(0,'lines'),
+             fill = "white")
+print(fp2)
+ggsave("graphs/2_genderxcolour.png", fp2, width = 6.9, height = 6.9, dpi = 1000)
+```
+
+```{r}
+### MAJORITY AUTHOR DIFFERENCE ###
+subt3 <- c("← Majority author predicted male            Majority author predicted female →")
+fp3 <- ggplot(data=effects3_f, aes(x=topicname, y=relativedifference, ymin=relativelower, ymax=relativeupper)) +
+  labs(title = "Mean effect of majority author gender",
+       subtitle = "Relative difference in topic proportion") +
+  geom_pointrange(colour = wes_palette("Darjeeling1")[3], shape=18, size = 1) + 
+  geom_hline(yintercept=0, lty=2, colour ='darkgrey') +  # add a dotted line at x=1 after flip
+  coord_flip() +  # flip coordinates (puts labels on y axis)
+  scale_y_continuous(limits = c(-0.5, 1.25))  +
+  scale_x_discrete(expand = c(0.1, 0.1)) +
+  xlab('') + 
+  ylab(subt3) +
+  theme(aspect.ratio=1,
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y = element_text(size = 10)) +
+  geom_label(aes(label = round(relativedifference, 3), y = relativedifference), 
+             size = 2.75, nudge_x = 0.5, 
+             label.padding = unit(0.2, "lines"),
+             label.r = unit(0,'lines'),
+             fill = "white")
+print(fp3)
+ggsave("graphs/3_genderxcolour.png", fp3, width = 6.9, height = 6.9, dpi = 1000)
+```
+
+```{r}
+```
+
+```{r}
+### t-SNE visuals
+
+DTM <- make.dt(model120_1, meta = data$id)
+write.csv(DTM,"DTM.csv")
+```
+
+```{r}
+tsne = read.csv("tsne.csv")
+tsne$first_author_gender <- factor(ifelse(tsne$first_author_female == "1.0","female",
+                                          ifelse(tsne$first_author_female == "0.0","male",
+                                                 "unknown")))
+
+tsne$last_author_gender <- factor(ifelse(tsne$last_author_female == "1.0","female",
+                                          ifelse(tsne$last_author_female == "0.0","male",
+                                                 "unknown")))
+
+tsne$majority_author_gender <- factor(ifelse(tsne$majority_female_binary == "1.0","female",
+                                          ifelse(tsne$majority_female_binary == "0.0","male",
+                                                 ifelse(tsne$majority_female_binary == "0.5","even",
+                                                 "unknown"))))
+```
+
+```{r}
+### ADD CLUSTERS ###
+tsne$topic <- gsub("Topic", "", tsne$topic)  # Remove the "Topic" part
+
+# load the CSV file with topic names
+topic_names <- read.csv("topiclabels_final.csv", sep = ";")
+topic_names <- topic_names %>% filter(topic_names$topicname != 0)
+
+topic_names <- topic_names %>%
+  filter(is.na(as.numeric(topicname)))
+
+topic_names <- topic_names %>%
+  rename(topic = number)
+
+# combine the comp.1 and comp.2 columns into a matrix
+data_matrix <- cbind(tsne$comp.1, tsne$comp.2)
+
+# use the kmeans function to cluster the data into N clusters
+kmeans_model <- kmeans(data_matrix, centers = 150)
+
+# add the cluster labels to your original dataframe
+tsne$cluster <- as.factor(kmeans_model$cluster)
+
+### ADD LABELS PER CLUSTER ### 
+# group the data by cluster and topic, count the number of occurrences of each topic within each cluster, and choose the most common topic for each cluster
+
+#tsne <- tsne %>%
+  #rename(topic = topic.x)
+
+most_common_topics <- tsne %>% 
+  group_by(cluster, topic) %>% 
+  summarise(count = n()) %>% 
+  group_by(cluster) %>% 
+  arrange(desc(count)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  select(cluster, topic)
+
+# calculate % women author per cluster
+
+first_share_women <- tsne %>%
+  group_by(cluster, first_author_female) %>%
+  summarise(count_gender = n()) %>%
+  group_by(cluster) %>%
+  mutate(percent_female = sum(count_gender[first_author_female == "1.0"]) / sum(count_gender)) %>%
+  slice(1) %>% 
+  ungroup() %>% 
+  select(cluster, percent_female)
+
+first_share_women$percent_female <- round(as.numeric(first_share_women$percent_female), 3)
+
+# join the most common topic for each cluster to your original dataframe
+tsne <- left_join(tsne, most_common_topics, by = "cluster")
+tsne <- left_join(tsne, first_share_women, by = "cluster")
+
+first_point_per_cluster <- tsne %>% 
+  group_by(cluster) %>% 
+  slice(1) %>% 
+  ungroup()
+
+# rename number into topic
+
+first_point_per_cluster <- first_point_per_cluster %>%
+  rename(topic = topic.y)
+first_point_per_cluster <- merge(first_point_per_cluster, topic_names, by = "topic")
+first_point_per_cluster <- first_point_per_cluster %>% 
+  distinct(topicname, .keep_all = TRUE)
+```
+
+```{r}
+# high resolution png image
+output_file <- "tsne.png"
+width <- 12
+height <- 9
+resolution <- 1000
+
+# plot
+plot <- tsne %>% ggplot(aes(x = comp.1, y = comp.2)) +
+  geom_point(aes(colour = first_author_gender, alpha = climatejusticescore), size = 0.5,) + 
+  geom_label(data = first_point_per_cluster, aes(label = topicname), size = 2, nudge_y = 0) +
+  xlab("t-SNE 1") + ylab("t-SNE 2") + theme_bw() +
+  labs(title = "Topical space and gender of the first author",
+       subtitle = "a t-SNE visualisation of the structural topic modelling output")  +
+  theme(aspect.ratio=1,
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_manual(values=c (wes_palette("Darjeeling1")[4],wes_palette("Darjeeling1")[2],"darkgrey"))
+
+# save the plot
+ggsave(output_file, plot, width = width, height = height, dpi = resolution)
+
+# maybe we only want to display labels for these clusters where a share of women is above average?
+# i have all the labels we want per cluster - we just need to figure out a good way to disoplay them
+```
+
+```{r}
+# high resolution png image
+output_file <- "tsne2.png"
+width <- 12
+height <- 9
+resolution <- 1000
+
+# plot
+plot <- tsne %>% ggplot(aes(x = comp.1, y = comp.2)) +
+  geom_point(aes(colour = last_author_gender, alpha = climatejusticescore), size = 1,) + 
+  geom_label(data = first_point_per_cluster, aes(label = topicname), size = 2, nudge_y = 0) +
+  xlab("t-SNE 1") + ylab("t-SNE 2") + theme_bw() +
+  labs(title = "Topical space and gender of the last author",
+       subtitle = "a t-SNE visualisation of the structural topic modelling output")  +
+  theme(aspect.ratio=1,
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_manual(values=c (wes_palette("Darjeeling1")[4],wes_palette("Darjeeling1")[2],"darkgrey"))
+
+# save the plot
+ggsave(output_file, plot, width = width, height = height, dpi = resolution)
+```
+
+```{r}
+# high resolution png image
+output_file <- "tsne3.png"
+width <- 12
+height <- 9
+resolution <- 1000
+
+# plot
+plot <- tsne %>% ggplot(aes(x = comp.1, y = comp.2)) +
+  geom_point(aes(colour = majority_author_gender, alpha = climatejusticescore), size = 1,) + 
+  geom_label(data = first_point_per_cluster, aes(label = topicname), size = 2, nudge_y = 0) +
+  xlab("t-SNE 1") + ylab("t-SNE 2") + theme_bw() +
+  labs(title = "Topical space and gender composition of the full author group",
+       subtitle = "a t-SNE visualisation of the structural topic modelling output")  +
+  theme(aspect.ratio=1,
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  scale_color_manual(values=c (wes_palette("Darjeeling1")[1] ,wes_palette("Darjeeling1")[4],wes_palette("Darjeeling1")[2],"darkgrey"))
+
+# save the plot
+ggsave(output_file, plot, width = width, height = height, dpi = resolution)
+```
+
+```{r}
+### ANALYSIS OF CONTROL VARIABLE EFFECTS / INTERACTIONS ### 
+
+# run a beta regression with logit link
+# heteroskedasticity ? 
+# outcome - CJ score (continuous between 0 and 1)
+# predictors - use the same formula as above for prep1, prep2 and prep3
+library(betareg)
+data <- merge(data, tsne[c('id', 'climatejusticescore')], by='id')
+
+# excluding subfield here as it has too many levels
+
+model1_y <- betareg(climatejusticescore ~first_author_female + s(year) #+ subfield 
+                    + X1_gii_quartile + impact + 
+                      #subfield*first_author_female +     
+                      impact*first_author_female +
+                      X1_gii_quartile*first_author_female, data = data)
+
+# visualise this nicely
+
+# for the graph we need
+#
+# check how "good" these models are - Tarun
+```
+
+```{r}
+### create a heatmap - CJ topic x continent
+dplyr::count(data, X1_country, sort = TRUE)
+dplyr::count(data, X1_region, sort = TRUE)
+
+library(hrbrthemes)
+library(plotly)
+library(viridis)
+library(heatmaply)
+
+data_cj <- data %>% filter(topic %in% cj_topics)
+# 7517 observations
+
+# add a value for each combination in the dataset
+data_cj <- data_cj %>%
+  group_by(X1_region, topicname) %>%
+  mutate(value = n())
+data_cj$value <- as.numeric(data_cj$value)
+
+mat1 <- data_cj[c("X1_region","topicname","value")]
+# deduplicate
+
+mat2<- mat1 %>%
+  pivot_wider(names_from = topicname, values_from = value)
+mat2 <- mat2[-2]
+mat2 <- mat2 %>%
+  group_by(X1_region) %>%
+  summarize_all(~ ifelse(all(is.na(.)), NA, na.omit(.)))
+mat2 <- as.data.frame(mat2)
+rownames(mat2) <- mat2$X1_region
+mat2 <- mat2 %>% dplyr::select(-X1_region)
+mat2 <- as.matrix(mat2)
+mat2[is.na(mat2)] <- 0
+```
+
+```{r}
+# we want to show colour as percentage of the highest number in this row - aka what topic is most prominent within each region - and the other way around
+# but this is a silly way to do it as the axis also get flipped
+tmat2 <- t(mat2)
+```
+
+
+```{r}
+p <- heatmaply(percentize(mat2),
+        dendrogram = "none",
+        cellnote = mat2,
+        xlab = "", ylab = "", 
+        main = "",
+        colors = wes_palette("Zissou1"),
+        #scale = "column",
+        #margins = c(60,100,40,20),
+        grid_color = "white",
+        grid_width = 0.00001,
+        titleX = FALSE,
+        hide_colorbar = FALSE,
+        branches_lwd = 0.1,
+        label_names = c("Topic", "Region", "Documents"),
+        fontsize_row = 7, fontsize_col = 7,
+        labCol = colnames(mat2),
+        labRow = rownames(mat2),
+        heatmap_layers = theme(axis.line=element_blank()))
+p
+
+# here, we count only the most prominent topic in a document
+# next step would be to count all the documents above a threshold
+
+```
+
+
+```{r}
+# cleaning data
+# we want a neat table of all document info and corresponding topic proportions for each topic
+dtm <- DTM
+dtm <- dtm %>% rename(id = meta)
+dtm <- dtm %>% dplyr::select(-docnum)
+new_names <- gsub("Topic", "",colnames(dtm))
+colnames(dtm) <- new_names
+
+library(countrycode)
+data$X1_continent <- countryname(data$X1_country, destination = "continent", warn = TRUE)
+data$X1_region <- countryname(data$X1_country, destination = "region", warn = TRUE)
+data$X1_iso3 <- countryname(data$X1_country, destination = "iso3c", warn = TRUE)
+data$X1_region <- as.factor(data$X1_region)
+
+data <- merge(data, tsne[c('id', 'topic.x',"climatejusticescore")], by='id')
+data <- data %>%
+  rename(topic = topic.x)
+data <- merge(data, topic_names[c('topic', 'topicname')], by='topic', all.x = TRUE)
+
+data <- merge(data, dtm, by='id', all.x = TRUE)
+
+write.csv(data,"data_complete.csv")
+# this file contains all documents with their ids, metadata, and all necessary STM information
+# a separate file contains tsne data
+```
+
+```{r}
+# play around with thresholds - but do we find a threshold for each topic? that seems like a lot of work - should we say above mean topic proportion?
+# having the same threshold for all topics definitely doesnt make much sense
+# if we pick a topic - we can make a heatmap with no numbers instead
+```
+
+```{r}
+```
+
+```{r}
+data_cj_mean <- read.csv('data_cj_mean.csv', header = TRUE) 
+data_cj_mean <- data_cj_mean %>% dplyr::slice(-(1:2))
+rownames(data_cj_mean) <- data_cj_mean$X
+data_cj_mean <- data_cj_mean %>% dplyr::select(-X,-climatejusticescore)
+colnames(data_cj_mean) <- cj_topicnames
+data_cj_mean <- data_cj_mean %>%
+  dplyr::mutate_all(~round(as.numeric(.), 4))
+```
+
+```{r}
+# for each CJ topic - display documents above a certain threshold
+# choose all documents that are above average
+columns_to_filter <- c("12", "21", "25", "37", "44", "50", "56", "80", "83", "91", "101", "118", "119")
+filtered_data_list <- list()
+
+for (col_name in columns_to_filter) {
+  filtered_data_list[[col_name]] <- data %>%
+    filter(.data[[col_name]] > 2 * mean_proportions_f[[col_name]]) %>%
+    mutate(Topic = col_name)  # Add a column indicating the topic number
+}
+
+consolidated_data <- bind_rows(filtered_data_list)
+
+rownames(consolidated_data) <- NULL
+
+# add number of documents per region - and then create a heatmap
+
+result <- consolidated_data %>%
+  count(X1_region, Topic)
+result <- result %>%
+  rename("Documents" = n)
+
+# write this into a matrix shape
+
+mat3 <- result %>%
+  pivot_wider(names_from = X1_region, values_from = "Count Documents")
+mat3 <- as.data.frame(mat3)
+mat3 <- mat3 %>%
+  rename(topic = Topic)
+mat3 <- merge(mat3,topic_names[c("topic","topicname")],by='topic')
+rownames(mat3) <- mat3$topicname
+mat3 <- mat3[-1]
+
+mat3$World <- rowSums(mat3, na.rm = TRUE)
+
+mat3 <- arrange(mat3, World)
+mat3 <- mat3[-9]
+```
+
+```{r}
+p <- heatmaply(percentize(mat3),
+        dendrogram = "none",
+        #cellnote = mat3,
+        xlab = "", ylab = "", 
+        main = "",
+        colors = wes_palette("Zissou1"),
+        #grid_color = "white",
+        grid_width = 0.0000,
+        titleX = FALSE,
+        hide_colorbar = FALSE,
+        branches_lwd = 0.1,
+        label_names = c("Topic", "Region", "Document Count (%)"),
+        fontsize_row = 7, fontsize_col = 7,
+        labCol = colnames(mat3),
+        labRow = rownames(mat3),
+        heatmap_layers = theme(axis.line=element_blank(), aspect.ratio=1))
+p
+
+# how can i percentize it by rows without flipping the whole thing?
+
+# this graph actually shows very interesting results
+# most prominent topic in east asia and europe is adaptive capacity, migration, europe - transformation discourse; latin america and middle east - vulnerability, social capital, local knowledge; north america - migration, adaptive capacity, transformation discourse; south asia and subsaharan africa - rural households, food security, vulnerability, adaptive capacity
+# least prominent topics - across continents apart for latin america - island territories; rural households - apart for south asia and sub-saharan africa
+# this means these topics are generally vastly underrepresented in the discourse  
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 

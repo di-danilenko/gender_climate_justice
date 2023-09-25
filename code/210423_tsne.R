@@ -47,7 +47,6 @@ tsne2$last_author_gender <- factor(ifelse(tsne2$last_author_female != 1,"male","
 tsne3 = read.csv("/Users/dianadanilenko/Desktop/methods/R_scripts/tsne3.csv")
 tsne3$majority_female_binary <- factor(ifelse(tsne3$majority_female_binary != 1,"male","female"))
 
-
 ### ADD CLUSTERS ###
 tsne1$topic <- gsub("Topic", "", tsne1$topic)  # Remove the "Topic" part
 # Load the CSV file into a new dataframe
