@@ -81,35 +81,40 @@ write.csv(gii_count3, "gii_count3.csv", row.names = FALSE)
 ### RESULTS - GENDER COMPOSITION ###
 df1 <- data.frame(
   category = c("male", "female"),
-  count = c(22955, 14527),
-  percents = c(100*22955/(22955+14527),100*14527/(22955+14527))
+  count = c(21626, 13727),
+  percents = c(100*21626/(21626+13727),100*13727/(21626+13727))
 )
 df2 <- data.frame(
   category = c("male", "female"),
-  count = c(26764, 11326),
-  percents = c(100*26764/(26764+11326),100*11326/(26764+11326))
+  count = c(24829, 10050),
+  percents = c(100*24829/(24829+10050),100*10050/(24829+10050))
 )
 df3 <- data.frame(
-  category = c("male", "female"),
-  count = c(19837, 6039),
-  percents = c(100*19837/(19837+6039),100*6039/(19837+6039))
+  category = c("male", "female", "equal"),
+  count = c(17169, 6338, 4205),
+  percents = c(
+    100 * 17169 / (17169 + 6338 + 4205),
+    100 * 6338 / (17169 + 6338 + 4205),
+    100 * 4205 / (17169 + 6338 + 4205)
+  )
 )
+# double check these numbers again because this seems a bit too good
 
 # combine the three data frames
 df_all <- rbind(df1, df2, df3)
 df_all$percents <- round(df_all$percents, 2)
-df_all$position <- c("first author", "first author", "last author", "last author", "majority author", "majority author")
+df_all$position <- c("first author", "first author", "last author", "last author", "majority author", "majority author","majority author")
 
 # create the histogram
 ggplot(data = df_all, aes(fill=category, y=percents, x=position)) + 
   geom_bar(position="stack", stat="identity") +
-  geom_label(aes(label = paste(percents,"%")), size = 4,
+  geom_label(aes(label = paste(percents,"%")), size = 5,
              fill = "white", position = position_stack(vjust = 0.5)) +
-  scale_fill_manual(values = c(wes_palette("Darjeeling1")[4], wes_palette("Darjeeling1")[2])) +
+  scale_fill_manual(values = c(wes_palette("Darjeeling1")[3], wes_palette("Darjeeling1")[4], wes_palette("Darjeeling1")[2])) +
   xlab("") + ylab("percentage")+
   theme(aspect.ratio=1,
-        plot.title = element_text(hjust = 0.5, size = 14),
-        plot.subtitle = element_text(hjust = 0.5)) +
+        plot.title = element_text(hjust = 0.5, size = 20),
+        plot.subtitle = element_text(hjust = 0.5)) + theme(text = element_text(size = 15)) + 
   labs(title = "Composition of authors by gender",
        subtitle="in authorship instances with an unambiguous gender estimate")
-
+ggsave("/Users/dianadanilenko/Desktop/gender_climate_justice/code/graphs/gender_composition.jpeg", width=8, height=8)
