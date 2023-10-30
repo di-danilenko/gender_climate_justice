@@ -213,6 +213,8 @@ write.csv(thoughts,"thoughts120_1.csv")
 
 cj_topics <- c(12,21,25,37,44,50,56,80,83,91,101,118,119) 
 cj_topicnames <- c("Resilience","Food Security","Vulnerability","Adaptive Capacity","Governance","Local Knowledge","Island Territories","Climate Finance","Rural Households","Transformation Discourse","Community","Social Capital","Migration")
+cj_topicnames1 <- c("resilience","food_security","vulnerability","adaptive_capacity","governance","local_knowledge","island_territories","climate_finance","rural_households","transformation_discourse","community","social_capital","migration")
+
 ```
 
 ```{r}
@@ -468,7 +470,7 @@ ggsave("graphs/3_genderxcolour.png", fp3, width = 6.9, height = 6.9, dpi = 1000)
 DTM <- make.dt(model120_1, meta = data$id)
 write.csv(DTM,"DTM.csv")
 ```
-
+# load tSNE data
 ```{r}
 tsne = read.csv("tsne.csv")
 tsne$first_author_gender <- factor(ifelse(tsne$first_author_female == "1.0","female",
@@ -492,18 +494,18 @@ tsne$topic <- gsub("Topic", "", tsne$topic)  # Remove the "Topic" part
 # load the CSV file with topic names
 topic_names <- read.csv("topiclabels_final.csv", sep = ";")
 topic_names <- topic_names %>% filter(topic_names$topicname != 0)
-
 topic_names <- topic_names %>%
   filter(is.na(as.numeric(topicname)))
-
 topic_names <- topic_names %>%
   rename(topic = number)
 
 # combine the comp.1 and comp.2 columns into a matrix
 data_matrix <- cbind(tsne$comp.1, tsne$comp.2)
 
+# so for the interactive plot i need the following inputs -data, tsne, data_matrix and topic_names - can we save and store these to minimise the effor within the app
+
 # use the kmeans function to cluster the data into N clusters
-kmeans_model <- kmeans(data_matrix, centers = 150)
+kmeans_model <- kmeans(tsne[c("comp.1","comp.2")], centers = 150)
 
 # add the cluster labels to your original dataframe
 tsne$cluster <- as.factor(kmeans_model$cluster)
@@ -549,8 +551,6 @@ last_share_women$percent_female2 <- round(as.numeric(last_share_women$percent_fe
 
 # majority_share_women we need to get the non binary variable values here again and calculate mean proportion of female authors per cluster
 
-last_share_women$percent_female2 <- round(as.numeric(last_share_women$percent_female2), 3)
-
 # join the most common topic for each cluster to your original dataframe
 tsne <- left_join(tsne, most_common_topics, by = "cluster")
 tsne <- left_join(tsne, first_share_women, by = "cluster")
@@ -561,7 +561,13 @@ first_point_per_cluster <- tsne %>%
   slice(1) %>% 
   ungroup()
 
+topic_names <- topic_names[-3]
+
 # rename number into topic
+tsne <- tsne %>%
+  rename(topic = topic.y)
+tsne <- tsne[, -which(names(tsne) == "topic.x")]
+tsne <- merge(tsne, topic_names, by = "topic", all.x=TRUE)
 
 first_point_per_cluster <- first_point_per_cluster %>%
   rename(topic = topic.y)
@@ -569,6 +575,14 @@ first_point_per_cluster <- merge(first_point_per_cluster, topic_names, by = "top
 first_point_per_cluster <- first_point_per_cluster %>% 
   distinct(topicname, .keep_all = TRUE)
 ```
+
+```{r}
+# write the tSNE data into an rds
+saveRDS(tsne, file = "tsne.rds")
+saveRDS(data_matrix, file = "tsnemat.rds")
+```
+
+
 # t-SNE visuals
 ```{r}
 # create a rectangle on each of these plots
@@ -1131,7 +1145,182 @@ for (row in topics_rows) {
 mat6 <- mat6[-9]
 mat6 <- t(mat6)
 ```
+# yearly publications 
 
+```{r}
+# summarise yearly:
+# number of publications
+# first author woman share
+# last author woman share
+# full group average woman share
+# climate justice score 
+
+data1 <- read_csv("data_complete.csv")
+
+# coerce numeric variables
+data1 <- data1 %>%
+  mutate(
+    first_author_female = as.numeric(first_author_female),
+    last_author_female = as.numeric(last_author_female),
+    majority_female_binary = as.numeric(majority_female_binary),
+    climatejusticescore = as.numeric(climatejusticescore),
+    year = as.numeric(year)
+  )
+
+# you want to use majority female not majority female binary for this!
+# try to percentise the numbers - what do we need to divide by? 
+
+summary_data1 <- data1 %>%
+  group_by(year) %>%
+  summarize(
+    avg_first_author_female = sum(first_author_female, na.rm = TRUE) / sum(!is.na(first_author_female)),
+    avg_last_author_female = sum(last_author_female, na.rm = TRUE) / sum(!is.na(last_author_female)),
+    avg_majority_female_binary = sum(majority_female_binary, na.rm = TRUE) / sum(!is.na(majority_female_binary))
+  )
+
+# plot 1996 to 2022
+summary_data$avg_female <- summary_data$avg_first_author_female
+summary_data$variable <- "first author"
+summary_data <- rbind(summary_data, summary_data)
+summary_data$variable[33:64] <- "last author"
+summary_data$avg_female[33:64] <- summary_data$avg_last_author_female[33:64]
+summary_data$variable[65:128] <- "full group"
+summary_data$avg_female[65:128] <- summary_data$avg_majority_female_binary[65:128]
+summary_data <- summary_data[-2]
+
+# we have to cut off here from 2006 because the data is weird otherwise probably due to very few records 
+# is that okay or should we look for a different solution?
+
+ggplot(summary_data, aes(x=year,y=avg_female, fill=variable)) + 
+  geom_area(alpha=0.75 , size=.25, colour="white", position = "jitter") +
+  scale_fill_manual(values=c(wes_palette("Darjeeling1")[5],wes_palette("Darjeeling1")[3],wes_palette("Darjeeling1")[1])) + 
+  scale_y_continuous(name = "average percentage of female authors") +
+  scale_x_continuous(limits = c(2006, 2023),expand=c(0,0)) + 
+  theme_bw()
+
+ggsave("femaleauthorsharetime.png", width=10, height=8)
+
+# this is kind of a boring graph let's see what would be nice to add here - a stacked percentised version next to it? 
+
+```
+```{r}
+# topic-specific time trend of relevant topics - would also be nice to percentise
+# data processing
+# we need to divide the summarised topic proportions by the number of documents
+
+library(viridis)
+library(hrbrthemes)
+
+summary_data2 <- data1 %>%
+  group_by(year) %>%
+  summarize(
+    total_climatejusticescore = sum(climatejusticescore),
+    resilience = sum(resilience),
+    food_security = sum(food_security),
+    vulnerability = sum(vulnerability),
+    adaptive_capacity = sum(adaptive_capacity),
+    governance = sum(governance),
+    local_knowledge = sum(local_knowledge),
+    island_territories = sum(island_territories),
+    climate_finance = sum(climate_finance),
+    rural_households = sum(rural_households),
+    transformation_discourse = sum(transformation_discourse),
+    community = sum(community),
+    social_capital = sum(social_capital),
+    migration = sum(migration)
+  )
+
+for (i in seq_along(cj_topics)) {
+  old_name <- cj_topics[i]
+  new_name <- cj_topicnames1[i]
+  if (old_name %in% colnames(data1)) {
+    colnames(data1)[colnames(data1) == old_name] <- new_name
+  }
+}
+
+summary_data2_long <- pivot_longer(summary_data2, cols = -year, names_to = "topic", values_to = "value")
+
+# percentised data
+
+columns_to_summarize <- c(
+  "climatejusticescore",
+  "resilience",
+  "food_security",
+  "vulnerability",
+  "adaptive_capacity",
+  "governance",
+  "local_knowledge",
+  "island_territories",
+  "climate_finance",
+  "rural_households",
+  "transformation_discourse",
+  "community",
+  "social_capital",
+  "migration"
+)
+
+summary_data3 <- data1 %>%
+  group_by(year) %>%
+  summarize(
+    across(
+      all_of(columns_to_summarize),
+      sum,
+      .names = "total_{.col}"
+    )
+  ) %>%
+  mutate(across(
+    starts_with("total_"),
+    ~ . / sum(.),
+    .names = "percentage_{.col}"
+  ))
+
+summary_data3 <- summary_data3 %>% select(year, starts_with("percentage_"))
+
+summary_data3_long <- pivot_longer(summary_data3, cols = -year, names_to = "topic", values_to = "percent_value")
+
+```
+
+
+```{r}
+# topic-specific time trend of relevant topics - visuals
+
+ggplot(summary_data2_long %>% filter(! topic == "total_climatejusticescore"), aes(x = year, y = value, fill = topic)) +
+  geom_area(alpha=0.9, size=.25, colour="white") +
+  labs(title = "",
+       x = "year",
+       y = "topic proportion") +
+  scale_x_continuous(limits = c(2006, 2023),expand=c(0,0)) +
+  theme_bw() +
+  scale_fill_viridis(discrete=T)
+
+ggsave("graphs/topicproportiontime.png", width=10, height=8)
+
+# exclude total cj score from this - add it as a line instead
+
+# topic proportion isnt normalised so isnt interpretable
+
+ggplot(summary_data3_long, aes(x = year, y = percent_value, fill = topic)) +
+  geom_area(alpha=0.9, size=.25, colour="white", position = "stack") +
+  labs(title = "",
+       x = "year",
+       y = "topic proportion") +
+  scale_x_continuous(limits = c(2006, 2023),expand=c(0,0)) +
+  theme_bw() +
+  scale_fill_viridis(discrete=T)
+```
+```{r}
+# get continuous data back
+
+gii_data <- read_excel("data/gender_inequality_index.xlsx")
+
+data1 <- merge(data1, gii_data, by.x="X1_country", by.y="country", all.x=T)
+data1 <- data1 %>%
+  rename(X1_gii = "gender inequality index")
+
+data1 <- merge(data1, gii_data, by.x="X2_country", by.y="country", all.x=T)
+data1 <- data1 %>%
+  rename(X2_gii = "gender inequality index")
+```
 
 
 
