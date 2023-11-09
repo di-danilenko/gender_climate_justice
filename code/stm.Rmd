@@ -29,11 +29,11 @@ library("tidyr")
 ```{r}
 data <- read.csv('data/df_full.csv', header = TRUE) 
 data <- data %>%
-  select(-X)
+  select(-X,impact)
 data$text <- "text"
 
 data <- data %>%
-  mutate(impact = if_else(is.na(impact) | impact == "None", "unknown", impact))
+  mutate(impact_quartile = if_else(is.na(impact_quartile) | impact_quartile == "None", "unknown", impact_quartile))
 data$subfield <- as.factor(data$subfield)
 data$first_author_female <- as.factor(data$first_author_female)
 data$last_author_female <- as.factor(data$last_author_female)
@@ -41,10 +41,6 @@ data$majority_female_binary <- as.factor(data$majority_female_binary)
 data$impact <- as.factor(data$impact)
 data$X1_gii_quartile <- as.factor(data$X1_gii_quartile)
 data$X2_gii_quartile <- as.factor(data$X2_gii_quartile)
-
-# match X1_country and X1_gii
-# match X2_country and X2_gii
-# match id with journal and journal impact
 ```
 
 ```{r}
@@ -201,7 +197,7 @@ write.csv(topics120_1,"topics120_1.csv")
 
 ```{r}
 ### TOPIC MODEL EXPLORATION ###
-model120_1 <- readRDS(file = "240823_120_1.Rds")
+model120_1 <- readRDS(file = "data/240823_120_1.Rds")
 
 # get the most representative documents for each topic
 
@@ -472,7 +468,7 @@ write.csv(DTM,"DTM.csv")
 ```
 # load tSNE data
 ```{r}
-tsne = read.csv("tsne.csv")
+tsne = read.csv("data/tsne.csv")
 tsne$first_author_gender <- factor(ifelse(tsne$first_author_female == "1.0","female",
                                           ifelse(tsne$first_author_female == "0.0","male",
                                                  "unknown")))
@@ -492,7 +488,7 @@ tsne$majority_author_gender <- factor(ifelse(tsne$majority_female_binary == "1.0
 tsne$topic <- gsub("Topic", "", tsne$topic)  # Remove the "Topic" part
 
 # load the CSV file with topic names
-topic_names <- read.csv("topiclabels_final.csv", sep = ";")
+topic_names <- read.csv("data/topiclabels_final.csv", sep = ";")
 topic_names <- topic_names %>% filter(topic_names$topicname != 0)
 topic_names <- topic_names %>%
   filter(is.na(as.numeric(topicname)))
@@ -889,7 +885,7 @@ p
 ```{r}
 # cleaning data
 # we want a neat table of all document info and corresponding topic proportions for each topic
-dtm <- read.csv("DTM.csv")
+dtm <- read.csv("data/DTM.csv")
 dtm <- dtm %>% rename(id = meta)
 dtm <- dtm %>% dplyr::select(-docnum)
 new_names <- gsub("Topic", "",colnames(dtm))
@@ -906,9 +902,9 @@ data$X2_region <- countryname(data$X2_country, destination = "region", warn = TR
 data$X2_iso3 <- countryname(data$X2_country, destination = "iso3c", warn = TRUE)
 data$X2_region <- as.factor(data$X2_region)
 
-data <- merge(data, tsne[c('id', 'topic.x',"climatejusticescore")], by='id')
-data <- data %>%
-  rename(topic = topic.x)
+data <- merge(data, tsne[c('id', 'topic',"climatejusticescore")], by='id')
+data$topic <- as.numeric(gsub("Topic", "", data$topic))
+
 data <- merge(data, topic_names[c('topic', 'topicname')], by='topic', all.x = TRUE)
 
 data <- merge(data, dtm, by='id', all.x = TRUE)
@@ -1155,7 +1151,7 @@ mat6 <- t(mat6)
 # full group average woman share
 # climate justice score 
 
-data1 <- read_csv("data_complete.csv")
+data1 <- read_csv("data/data_complete.csv")
 
 # coerce numeric variables
 data1 <- data1 %>%
@@ -1233,8 +1229,8 @@ summary_data2 <- data1 %>%
 for (i in seq_along(cj_topics)) {
   old_name <- cj_topics[i]
   new_name <- cj_topicnames1[i]
-  if (old_name %in% colnames(data1)) {
-    colnames(data1)[colnames(data1) == old_name] <- new_name
+  if (old_name %in% colnames(data)) {
+    colnames(data)[colnames(data) == old_name] <- new_name
   }
 }
 
@@ -1313,14 +1309,363 @@ ggplot(summary_data3_long, aes(x = year, y = percent_value, fill = topic)) +
 
 gii_data <- read_excel("data/gender_inequality_index.xlsx")
 
-data1 <- merge(data1, gii_data, by.x="X1_country", by.y="country", all.x=T)
-data1 <- data1 %>%
+data <- merge(data, gii_data, by.x="X1_country", by.y="country", all.x=T)
+data <- data %>%
   rename(X1_gii = "gender inequality index")
 
-data1 <- merge(data1, gii_data, by.x="X2_country", by.y="country", all.x=T)
-data1 <- data1 %>%
+data <- merge(data, gii_data, by.x="X2_country", by.y="country", all.x=T)
+data <- data %>%
   rename(X2_gii = "gender inequality index")
+
 ```
+
+### EXTERNAL REGRESSION ANALYSIS ###
+
+```{r}
+library(betareg)
+
+# gender variables - better factor or better numeric?
+# subfield variable has too many levels - exclude or recode into broader fields? does it make sense?
+
+# how is the estimate for intercept 57 if the variable values are 0-1?
+
+
+
+data <- data %>%
+  mutate(
+    first_author_female = as.factor(first_author_female),
+    last_author_female = as.factor(last_author_female),
+    majority_female_binary = as.factor(majority_female_binary),
+    climatejusticescore = as.numeric(climatejusticescore),
+    #resilience = as.numeric(resilience),
+    X1_gii = as.numeric(X1_gii),
+    impact_factor = as.numeric(impact_factor),
+    year = as.numeric(year)
+  )
+
+for (topic in cj_topicnames1) {
+  model1 <- betareg(topic ~first_author_female + year + #subfield 
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+  summary(model1)  
+}
+
+for (topic in cj_topicnames1) { print(topic)
+  }
+
+model1_reg <- betareg(resilience ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg)
+
+model1_reg2 <- betareg(food_security ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg2)
+
+model1_reg3 <- betareg(vulnerability ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg3)
+
+model1_reg4 <- betareg(adaptive_capacity ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg4)
+
+model1_reg5 <- betareg(governance ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg5)
+
+model1_reg6 <- betareg(local_knowledge ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg6)
+
+model1_reg7 <- betareg(island_territories ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg7)
+
+model1_reg8 <- betareg(climate_finance ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg8)
+
+model1_reg9 <- betareg(rural_households ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg9)
+
+model1_reg10 <- betareg(transformation_discourse ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg10)
+
+model1_reg11 <- betareg(community ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg11)
+
+model1_reg12 <- betareg(social_capital ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg12)
+
+model1_reg13 <- betareg(migration ~first_author_female + year + #subfield +
+                      X1_gii + impact_factor + 
+                      #subfield*first_author_female +     
+                      impact_factor*first_author_female +
+                      X1_gii*first_author_female, data = data)
+summary(model1_reg13)
+```
+```{r}
+summary(data$rural_households)
+
+library(marginaleffects)
+
+```
+
+```{r}
+# plot a pdf of a topic proportion - separate one for each gender value 
+```
+
+
+
+```{r}
+model_results <- list()
+
+for (topic in cj_topicnames1) {
+  topic_data <- subset(data, topic == topic)
+
+  model1 <- betareg(topic ~ first_author_female + year +
+                      X1_gii + impact_factor +
+                      impact_factor * first_author_female +
+                      X1_gii * first_author_female, data = topic_data)
+  
+  model_results[[topic]] <- summary(model1)
+}
+```
+
+```{r}
+### LAST AUTHOR GENDER EXTERNAL REGRESSION ###
+
+model2_reg <- betareg(resilience ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg)
+
+model2_reg2 <- betareg(food_security ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg2)
+
+model2_reg3 <- betareg(vulnerability ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg3)
+
+model2_reg4 <- betareg(adaptive_capacity ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg4)
+
+model2_reg5 <- betareg(governance ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg5)
+
+model2_reg6 <- betareg(local_knowledge ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg6)
+
+model2_reg7 <- betareg(island_territories ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg7)
+
+model2_reg8 <- betareg(climate_finance ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg8)
+
+model2_reg9 <- betareg(rural_households ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg9)
+
+model2_reg10 <- betareg(transformation_discourse ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg10)
+
+model2_reg11 <- betareg(community ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg11)
+
+model2_reg12 <- betareg(social_capital ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg12)
+
+model2_reg13 <- betareg(migration ~last_author_female + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*last_author_female +     
+                      impact_factor*last_author_female +
+                      X2_gii*last_author_female, data = data)
+summary(model2_reg13)
+```
+
+```{r}
+### MAJORITY AUTHOR GENDER EXTERNAL REGRESSION ### 
+
+model3_reg <- betareg(resilience ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg)
+
+model3_reg2 <- betareg(food_security ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg2)
+
+model3_reg3 <- betareg(vulnerability ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg3)
+
+model3_reg4 <- betareg(adaptive_capacity ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg4)
+
+model3_reg5 <- betareg(governance ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg5)
+
+model3_reg6 <- betareg(local_knowledge ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg6)
+
+model3_reg7 <- betareg(island_territories ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg7)
+
+model3_reg8 <- betareg(climate_finance ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg8)
+
+model3_reg9 <- betareg(rural_households ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg9)
+
+model3_reg10 <- betareg(transformation_discourse ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg10)
+
+model3_reg11 <- betareg(community ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg11)
+
+model3_reg12 <- betareg(social_capital ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg12)
+
+model3_reg13 <- betareg(migration ~majority_female_binary + year + #subfield +
+                      X2_gii + impact_factor + 
+                      #subfield*majority_female_binary +     
+                      impact_factor*majority_female_binary +
+                      X2_gii*majority_female_binary, data = data)
+summary(model3_reg13)
+```
+
+### TWO-LEVEL INTERACTION ANALYSIS ###
+# also do it per topic? or simply on climatejusticescore?
 
 
 
