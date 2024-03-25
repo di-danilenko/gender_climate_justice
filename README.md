@@ -1,0 +1,1 @@
+The paper analysed the semantic landscape of climate adaptation literature and the impact of author gender on the inclusion of justice-related topics by applying Structured Topic Modelling (STM) and gender prediction tools.
