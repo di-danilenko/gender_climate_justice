@@ -20,8 +20,8 @@ The paper analysed the semantic landscape of climate adaptation literature and t
 
 ### Executing
 
-* How to run the program
-* Step-by-step bullets
+* How to run the program.
+* Explain the order of code parts.
 ```
 code blocks for commands
 ```
