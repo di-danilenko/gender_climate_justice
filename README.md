@@ -1,4 +1,4 @@
-# Climate Adaptation Literature x Author Gender x Justice
+# Author gender and justice topic analysis of climate adaptation literature
 
 The paper analysed the semantic landscape of climate adaptation literature and the impact of author gender on the inclusion of justice-related topics by applying Structured Topic Modelling (STM) and gender prediction tools.
 
