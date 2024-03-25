@@ -8,17 +8,21 @@ library("leaflet")
 ### DESCRPITIVE STATISTICS ###
 
 # make a graph for cumulative yearly publications             
-pub_y <- read_csv("yearly_cumulative_papers.csv")
+pub_y <- read_csv("/Users/dianadanilenko/Desktop/personal/master_thesis/methods/R_scripts/yearly_cumulative_papers2.csv")
 
-ggplot(pub_y, aes(x = year, y = cumulative_sum)) +
-  geom_bar(aes(y = papers_published*10), stat = "identity", width = 0.9, fill = wes_palette("Darjeeling1")[5]) +
-  geom_line(aes(y = cumulative_sum),size =1.5, color = wes_palette("Darjeeling1")[1], alpha = 0.75) +
+pub_y <- pub_y %>% filter (year != "2023") 
+
+y <- ggplot(pub_y, aes(x = year, y = cumulative_sum)) +
+  geom_bar(aes(y = papers_published*10), stat = "identity", width = 0.9, fill = wes_palette("Darjeeling1")[2], alpha = ifelse(pub_y$year == "2022", 0.75, 1)) +
+  geom_line(aes(y = cumulative_sum),linewidth =1.5, color = wes_palette("Darjeeling1")[1], alpha = 0.75) +
   scale_y_continuous(name = "Cumulative sum",sec.axis = sec_axis(~./10, name = "Papers published")) +
   scale_x_continuous(breaks = seq(1991, max(pub_y$year), by = 2), labels = seq(1991, max(pub_y$year), by = 2),
                      name = "Year") +
   theme(aspect.ratio=0.75,
         plot.title = element_text(hjust = 0.5, size = 14),
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + theme_bw()
+
+ggsave("graphs/yearly_publications.png", y, width = 6.9, height = 3.9, dpi = 1000)
 
 first_country <- subset(data1, select = c(id,country, gender.inequality.index,gii_quartile))
 first_country <- filter(first_country,country != "")
@@ -110,11 +114,12 @@ ggplot(data = df_all, aes(fill=category, y=percents, x=position)) +
   geom_bar(position="stack", stat="identity") +
   geom_label(aes(label = paste(percents,"%")), size = 5,
              fill = "white", position = position_stack(vjust = 0.5)) +
-  scale_fill_manual(values = c(wes_palette("Darjeeling1")[3], wes_palette("Darjeeling1")[4], wes_palette("Darjeeling1")[2])) +
+  scale_fill_manual(values = c(wes_palette("Darjeeling1")[3], wes_palette("Darjeeling1")[4], wes_palette("Darjeeling1")[5])) +
   xlab("") + ylab("percentage")+
   theme(aspect.ratio=1,
-        plot.title = element_text(hjust = 0.5, size = 20),
-        plot.subtitle = element_text(hjust = 0.5)) + theme(text = element_text(size = 15)) + 
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.subtitle = element_text(hjust = 0.5)) + theme(text = element_text(size = 12)) + 
+  theme_bw() +
   labs(title = "Composition of authors by gender",
        subtitle="in authorship instances with an unambiguous gender estimate")
-ggsave("/Users/dianadanilenko/Desktop/gender_climate_justice/code/graphs/gender_composition.jpeg", width=8, height=8)
+ggsave("/Users/dianadanilenko/Desktop/gender_climate_justice/code/graphs/gender_composition.jpeg", width=6.9, height=6.9, dpi=1000)
