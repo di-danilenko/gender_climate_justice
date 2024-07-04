@@ -36,10 +36,10 @@ library("marginaleffects")
 
 ```{r load the dataset}
 # load the dataset
-# rm(data)
+
 data <- read.csv('data/data_complete.csv', header = TRUE)
 data <- data %>%
-  select(c("id", "majority_female", "abstract","title","keywords",
+  select(c("id", "majority_female_binary", "abstract","title","keywords",
            "majority_female_binary","first_author_female","last_author_female","subfield","impact","X1_gii_quartile", "X2_gii_quartile", "year"))
 
 data$text <- "text"
@@ -235,13 +235,11 @@ cj_topicnames1 <- c("resilience","food_security","vulnerability","adaptive_capac
 set.seed(2911)
 
 # try fewer degrees of freedom for the spline, try taking out the spline
-prep1 <-  estimateEffect(~first_author_female, #+ s(year) + 
-                           #subfield +
-                           #X1_gii_quartile + 
-                         #impact + 
-                          # subfield*first_author_female +
-                           #impact*first_author_female +
-                           #X1_gii_quartile*first_author_female,
+prep1 <-  estimateEffect(~first_author_female + 
+                           s(year) + subfield + X1_gii_quartile + impact +
+                           subfield*first_author_female + 
+                           impact*first_author_female +
+                           X1_gii_quartile*first_author_female,
                          model120_1,
                          metadata = dfm_stm$meta)
 summary(prep1)
@@ -2392,4 +2390,51 @@ summary(sampled_data3_1[sampled_rows3, ]$climatejustice)
 # mean 0.768
 # about 23% higher for women-dominated full author groups
 ```
+
+```{r}
+# prepare data to compile a summary statistics table
+
+sumvarsFac <- c("first_author_female",
+                "last_author_female",
+                "broader_subfield",
+                "impact",
+                "X1_gii_quartile",
+                "X1_region",
+                "X2_region",
+                "geoparsed_region", # keep only the first region, or assign category "multiple"
+                "X2_gii_quartile")
+
+sumvarsNum <- c("year",
+                "proportion_female")
+
+data[sumvarsFac] <- lapply(data[sumvarsFac], factor)
+data[sumvarsNum] <- lapply(data[sumvarsNum], as.numeric)
+
+sumVars <- c(sumvarsFac, sumvarsNum)
+```
+
+```{r}
+# compile a summary statistics table
+library(haven)
+library(writexl)
+library(openxlsx)
+library(dplyr)
+library(stringr)
+library(readxl)
+library(summarytools)
+library(shiny)
+
+summary(data$proportion_female)
+
+data %>%
+  select(all_of(sumVars)) %>% 
+  dfSummary(graph.col = T, style = "grid", na.col = FALSE) %>%
+  print(file = "summarystatistics_all.html")
+rmarkdown::render("summarystatistics_all.html", output_file = "summarystatistics_all.doc")
+
+```
+
+
+
+
 
